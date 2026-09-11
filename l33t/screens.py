@@ -299,12 +299,14 @@ def path_screen(screen: Screen, profile: Profile, rng: random.Random,
     """Browse the syllabus and pick a lesson."""
     steps = build_path()
     idx = 0
+    rain = Rain(screen.h, screen.w, density=0.35)
     clock = Clock()
     screen.win.timeout(int(FRAME * 1000))
 
     while True:
-        clock.tick()
-        screen.sync()
+        dt = clock.tick()
+        if screen.sync():
+            rain.resize(screen.h, screen.w)
         for k in screen.keys():
             if k in UP_KEYS:
                 idx = (idx - 1) % len(steps)
@@ -316,18 +318,36 @@ def path_screen(screen: Screen, profile: Profile, rng: random.Random,
             elif k in QUIT_KEYS:
                 return
 
+        rain.update(dt)
         screen.erase()
-        x = max(2, (screen.w - 68) // 2)
-        screen.text(1, x, "LEARNING PATH",
+        rain.draw(screen)
+
+        panel_w = 68
+        x = max(2, (screen.w - panel_w) // 2)
+        cleared = profile.cleared_count()
+
+        # Everything below is one block, vertically centred, instead of the
+        # list anchored to the top and the detail panel pinned to the
+        # bottom -- which used to leave a dead gap for any list shorter
+        # than the terminal.
+        list_rows = len(steps)
+        detail_rows = 6
+        block_h = 2 + list_rows + 1 + detail_rows
+        top = max(1, (screen.h - block_h) // 2)
+
+        clear_box(screen, top - 1, top + block_h + 1, panel_w + 6)
+
+        screen.text(top, x, "LEARNING PATH",
                     curses.color_pair(P_WHITE) | curses.A_BOLD)
-        screen.text(1, x + 15,
-                    f"{profile.cleared_count()}/{len(steps)} cleared",
+        count = f"{cleared}/{len(steps)} cleared"
+        screen.text(top, x + panel_w - len(count), count,
                     curses.color_pair(P_AMBER))
-        room = max(3, screen.h - 8)
-        first = max(0, min(idx - room // 2, len(steps) - room))
-        for row, step in enumerate(steps[first:first + room]):
-            i = first + row
-            y = 3 + row
+        bar(screen, top + 1, x, panel_w - 2, cleared / len(steps),
+            curses.color_pair(P_HI))
+
+        list_top = top + 3
+        for i, step in enumerate(steps):
+            y = list_top + i
             state = profile.lesson(step.key)
             sel = i == idx
             mark = ("✓" if screen.g.unicode else "*") if state.cleared else " "
@@ -335,23 +355,39 @@ def path_screen(screen: Screen, profile: Profile, rng: random.Random,
             attr = (curses.color_pair(P_SEL) | curses.A_BOLD if sel
                     else curses.color_pair(P_HI if state.cleared else P_GREEN))
             screen.text(y, x, label.ljust(30), attr)
+
             detail = f"{len(step.lesson.commands):2} cmds"
             if state.best_wpm:
                 detail += f"   best {state.best_wpm:4.1f} wpm  {state.best_accuracy:5.1%}"
             screen.text(y, x + 31, detail, curses.color_pair(P_DIM))
+
             if step.modifier:
                 screen.text(y, x + 62, step.modifier.tag,
                             curses.color_pair(P_RED))
 
         step = steps[idx]
-        by = 4 + room
-        screen.rule(by - 1, x, 68, curses.color_pair(P_DIM))
+        state = profile.lesson(step.key)
+        by = list_top + list_rows + 1
+        screen.rule(by - 1, x, panel_w - 2, curses.color_pair(P_DIM))
         screen.text(by, x, step.lesson.blurb, curses.color_pair(P_CYAN))
         screen.text(by + 1, x, "tools: " + "  ".join(step.lesson.tools),
                     curses.color_pair(P_DIM))
+
+        remark_y = by + 2
         if step.modifier:
-            screen.text(by + 2, x, f"{step.modifier.name}: {step.modifier.blurb}",
+            screen.text(remark_y, x,
+                        f"{step.modifier.name}: {step.modifier.blurb}",
                         curses.color_pair(P_RED))
+            remark_y += 1
+
+        remark = akari.lesson_remark(step.key)
+        if remark:
+            _akari_line(screen, remark_y, x, remark)
+        elif state.attempts:
+            screen.text(remark_y, x,
+                        f"{state.attempts} attempt(s) so far",
+                        curses.color_pair(P_DIM))
+
         screen.center(screen.h - 2,
                       f"enter to start   q back   ·   difficulty: {difficulty}",
                       curses.color_pair(P_GREY))
@@ -360,17 +396,6 @@ def path_screen(screen: Screen, profile: Profile, rng: random.Random,
 
 # Commands taught per run. Four learned properly beats six skimmed.
 LEARN_COMMANDS = 4
-
-
-def start_point(screen: Screen, step) -> str:
-    """Where to begin. Nobody should have to sit through the teaching again
-    just because a previous run didn't get recorded."""
-    return menu(screen, [
-        ("full", "FROM THE START", "problem, breakdown, type, recall, challenge"),
-        ("recall", "SKIP TO RECALL", "you know these -- prove it, then race"),
-        ("challenge", "STRAIGHT TO CHALLENGE", "the timed run, nothing else"),
-        ("quit", "BACK", ""),
-    ], heading=[step.name])
 
 
 def play_lesson(screen: Screen, profile: Profile, step, rng: random.Random,
