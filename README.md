@@ -2,6 +2,19 @@
 
 **Learn the shell by solving problems with it, then drill the typing.**
 
+Knowing shell commands cold, and typing them without looking at your hands,
+used to just be what it meant to be good at this job. These days an agent
+will write the command faster and more reliably than you will, and that's
+genuinely fine — it's a good trade, most days.
+
+But there's still something worth keeping in doing it yourself, the same way
+there's still something worth keeping in building your own mechanical
+keyboard or restoring an old motorcycle when a new one would just work. Not
+because it's the efficient way to get the job done, but because the craft is
+satisfying on its own terms — the fluency, the muscle memory, the small
+pleasure of a command landing clean on the first try. L33T exists to keep
+that alive a little, for whoever still wants it.
+
 Not a typing test with shell-flavoured filler. Each lesson teaches you *which
 problem is solved by which command, in which composition* — and only then
 asks you to type it fast.
