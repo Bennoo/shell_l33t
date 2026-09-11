@@ -284,14 +284,28 @@ def drill(screen: Screen, profile: Profile, rng: random.Random) -> None:
         subtitle = "no history yet -- this run builds your key profile"
     commands = shell.sample_commands(8, rng, weak)
     # Two pure punctuation lines: the part of shell typing that actually hurts.
-    drills = [shell.Command(shell.symbol_drill(rng, weak),
-                            "raw punctuation -- no meaning, just accuracy",
-                            "symbols") for _ in range(2)]
-    commands = commands[:6] + drills
+    commands = commands[:6] + _symbol_drills(rng, weak, 2)
     rng.shuffle(commands)
     session, ctx = run_commands(screen, profile, commands, dict(
         title="DRILL", subtitle=subtitle), "drill")
     finish(screen, profile, session, ctx, "drill")
+
+
+def _symbol_drills(rng: random.Random, weak: list[str], n: int) -> list:
+    """Synthetic Command entries for raw punctuation practice -- generated,
+    not drawn from the shell library, so they still need every field a real
+    Command has."""
+    out = []
+    for _ in range(n):
+        text = shell.symbol_drill(rng, weak)
+        out.append(shell.Command(
+            text=text,
+            problem="Type this cleanly -- no meaning to lean on, just accuracy.",
+            explain="raw punctuation -- no meaning, just accuracy",
+            tool="symbols",
+            parts=(shell.Part(text, "punctuation drill, generated fresh each run"),),
+        ))
+    return out
 
 
 def path_screen(screen: Screen, profile: Profile, rng: random.Random,

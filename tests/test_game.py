@@ -620,3 +620,31 @@ def test_menu_labels_are_never_truncated():
     src = inspect.getsource(screens.menu)
     assert "label_w = max(" in src, "label column must size itself"
     assert ".ljust(20)" not in src
+
+
+# -- regression: drill's synthetic Command entries --------------------------
+
+
+def test_symbol_drills_build_valid_commands():
+    """Regression: _symbol_drills used to call shell.Command with the old
+    3-positional-argument shape, which crashed the moment DRILL was opened
+    from the menu -- and nothing in the suite exercised that call site."""
+    from l33t.screens import _symbol_drills
+
+    for seed in range(20):
+        rng = random.Random(seed)
+        drills = _symbol_drills(rng, ["|", "&"], 2)
+        assert len(drills) == 2
+        for cmd in drills:
+            assert isinstance(cmd, shell.Command)
+            assert cmd.text and cmd.problem and cmd.explain and cmd.tool
+            assert cmd.parts and all(isinstance(p, shell.Part) for p in cmd.parts)
+            # reassemble() is the general invariant every Command must satisfy
+            assert shell.reassemble(cmd) == cmd.text
+
+
+def test_symbol_drills_work_with_no_weak_keys_yet():
+    """A fresh profile has no weak keys -- must not crash on an empty list."""
+    from l33t.screens import _symbol_drills
+    drills = _symbol_drills(random.Random(1), [], 2)
+    assert len(drills) == 2
