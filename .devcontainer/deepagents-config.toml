@@ -1,0 +1,22 @@
+[models]
+default = "ollama_local:gemma4:26b"
+
+[models.providers.ollama_local]
+class_path = "langchain_openai:ChatOpenAI"
+models = ["gemma4:26b"]
+base_url = "http://100.85.151.107:11434/v1"
+api_key_env = "OLLAMA_API_KEY"
+
+[models.providers.ollama_local.params]
+temperature = 0
+reasoning_effort = "high"
+
+[models.providers.ollama_qwen]
+class_path = "langchain_openai:ChatOpenAI"
+models = ["qwen3.6:27b"]
+base_url = "http://100.85.151.107:11434/v1"
+api_key_env = "OLLAMA_API_KEY"
+
+[models.providers.ollama_qwen.params]
+temperature = 0
+model_kwargs = {options = {num_ctx = 4096}}
