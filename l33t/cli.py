@@ -23,7 +23,8 @@ def unicode_supported() -> bool:
     return "utf" in enc
 
 
-def run(stdscr, seed: int | None, skip_boot: bool, difficulty: str) -> None:
+def run(stdscr, seed: int | None, skip_boot: bool,
+        difficulty: str | None) -> None:
     try:
         curses.curs_set(0)
     except curses.error:
@@ -38,6 +39,13 @@ def run(stdscr, seed: int | None, skip_boot: bool, difficulty: str) -> None:
     if not skip_boot:
         boot(screen, rng)
 
+    if difficulty is not None:
+        # An explicit flag seeds the saved setting; from here on it's
+        # changed in the learning path screen, not on the command line.
+        profile = Profile.load()
+        profile.difficulty = difficulty
+        profile.save()
+
     while True:
         profile = Profile.load()
         choice = title(screen, profile, rng)
@@ -46,7 +54,7 @@ def run(stdscr, seed: int | None, skip_boot: bool, difficulty: str) -> None:
         if not ensure_size(screen):
             return
         if choice == "path":
-            path_screen(screen, profile, rng, difficulty)
+            path_screen(screen, profile, rng)
         elif choice == "practice":
             practice(screen, profile, rng)
         elif choice == "codex":
@@ -69,8 +77,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-boot", action="store_true",
                         help="skip the boot sequence")
     parser.add_argument("--difficulty", choices=sorted(DIFFICULTIES),
-                        default="normal",
-                        help="challenge time budget (default: normal)")
+                        default=None,
+                        help="challenge time budget (default: last used, "
+                             "or normal; also changeable in-app on the "
+                             "learning path screen)")
     args = parser.parse_args(argv)
 
     locale.setlocale(locale.LC_ALL, "")

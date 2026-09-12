@@ -28,7 +28,16 @@ from .ui import (
 ENTER_KEYS = (10, 13, curses.KEY_ENTER)
 UP_KEYS = (curses.KEY_UP, ord("k"), ord("K"), ord("w"), ord("W"))
 DOWN_KEYS = (curses.KEY_DOWN, ord("j"), ord("J"), ord("s"), ord("S"))
+LEFT_KEYS = (curses.KEY_LEFT, ord("h"), ord("H"), ord("a"), ord("A"))
+RIGHT_KEYS = (curses.KEY_RIGHT, ord("l"), ord("L"), ord("d"), ord("D"))
 QUIT_KEYS = (ord("q"), ord("Q"), 27)
+
+# The order difficulty cycles through with the left/right keys -- easiest to
+# hardest, matching DIFFICULTIES' own definition order.
+DIFFICULTY_ORDER = list(DIFFICULTIES)
+# Distinct from each other AND from the bar's old always-green default, so
+# switching difficulty is visibly different no matter which one you land on.
+DIFFICULTY_COLOR = {"easy": P_GREEN, "normal": P_CYAN, "hard": P_RED}
 
 SPARK = "▁▂▃▄▅▆▇█"
 
@@ -311,8 +320,7 @@ def _symbol_drills(rng: random.Random, weak: list[str], n: int) -> list:
     return out
 
 
-def path_screen(screen: Screen, profile: Profile, rng: random.Random,
-                difficulty: str = "normal") -> None:
+def path_screen(screen: Screen, profile: Profile, rng: random.Random) -> None:
     """Browse the syllabus and pick a lesson."""
     steps = build_path()
     idx = 0
@@ -329,8 +337,14 @@ def path_screen(screen: Screen, profile: Profile, rng: random.Random,
                 idx = (idx - 1) % len(steps)
             elif k in DOWN_KEYS:
                 idx = (idx + 1) % len(steps)
+            elif k in LEFT_KEYS or k in RIGHT_KEYS:
+                pos = DIFFICULTY_ORDER.index(profile.difficulty)
+                step_dir = -1 if k in LEFT_KEYS else 1
+                profile.difficulty = DIFFICULTY_ORDER[
+                    (pos + step_dir) % len(DIFFICULTY_ORDER)]
+                profile.save()
             elif k in ENTER_KEYS:
-                play_lesson(screen, profile, steps[idx], rng, difficulty)
+                play_lesson(screen, profile, steps[idx], rng)
                 screen.win.timeout(int(FRAME * 1000))
             elif k in QUIT_KEYS:
                 return
@@ -341,7 +355,8 @@ def path_screen(screen: Screen, profile: Profile, rng: random.Random,
 
         panel_w = 68
         x = max(2, (screen.w - panel_w) // 2)
-        cleared = profile.cleared_count()
+        difficulty = profile.difficulty
+        cleared = profile.cleared_count(difficulty)
 
         # Everything below is one block, vertically centred, instead of the
         # list anchored to the top and the detail panel pinned to the
@@ -355,17 +370,19 @@ def path_screen(screen: Screen, profile: Profile, rng: random.Random,
         clear_box(screen, top - 1, top + block_h + 1, panel_w + 6)
 
         screen.text(top, x, "LEARNING PATH",
-                    curses.color_pair(P_WHITE) | curses.A_BOLD)
+                    curses.color_pair(DIFFICULTY_COLOR[difficulty])
+                    | curses.A_BOLD)
         count = f"{cleared}/{len(steps)} cleared"
         screen.text(top, x + panel_w - len(count), count,
                     curses.color_pair(P_AMBER))
         bar(screen, top + 1, x, panel_w - 2, cleared / len(steps),
-            curses.color_pair(P_HI))
+            curses.color_pair(DIFFICULTY_COLOR[difficulty]),
+            empty_attr=curses.color_pair(P_GREY))
 
         list_top = top + 3
         for i, step in enumerate(steps):
             y = list_top + i
-            state = profile.lesson(step.key)
+            state = profile.lesson(step.key, difficulty)
             sel = i == idx
             mark = ("✓" if screen.g.unicode else "*") if state.cleared else " "
             label = f"{mark} {step.index:2}. {step.name}"
@@ -383,7 +400,7 @@ def path_screen(screen: Screen, profile: Profile, rng: random.Random,
                             curses.color_pair(P_RED))
 
         step = steps[idx]
-        state = profile.lesson(step.key)
+        state = profile.lesson(step.key, difficulty)
         by = list_top + list_rows + 1
         screen.rule(by - 1, x, panel_w - 2, curses.color_pair(P_DIM))
         screen.text(by, x, step.lesson.blurb, curses.color_pair(P_CYAN))
@@ -405,8 +422,10 @@ def path_screen(screen: Screen, profile: Profile, rng: random.Random,
                         f"{state.attempts} attempt(s) so far",
                         curses.color_pair(P_DIM))
 
+        diff_hint = ("←/→ difficulty" if screen.g.unicode
+                    else "left/right difficulty")
         screen.center(screen.h - 2,
-                      f"enter to start   q back   ·   difficulty: {difficulty}",
+                      f"enter to start   q back   ·   {diff_hint}: {difficulty}",
                       curses.color_pair(P_GREY))
         screen.present()
 
@@ -435,7 +454,7 @@ LEARN_COMMANDS = 4
 
 
 def play_lesson(screen: Screen, profile: Profile, step, rng: random.Random,
-                difficulty: str = "normal", start: str | None = None) -> None:
+                start: str | None = None) -> None:
     """A lesson is five phases:
 
         problem  ->  breakdown  ->  type it  ->  recall  ->  challenge
@@ -447,7 +466,13 @@ def play_lesson(screen: Screen, profile: Profile, step, rng: random.Random,
     Any teaching step can be skipped with ctrl-N, and you can start partway
     through -- but never past the challenge, which is the only thing that
     clears a lesson.
+
+    The challenge runs at whatever difficulty is currently set on the
+    profile -- changed from the learning path screen, not passed in here --
+    so results are always recorded against the difficulty that produced
+    them.
     """
+    difficulty = profile.difficulty
     if not ensure_size(screen):
         return
     if start is None:
@@ -526,7 +551,7 @@ def play_lesson(screen: Screen, profile: Profile, step, rng: random.Random,
         return
     m = session.metrics(time.monotonic())
     cleared = ctx.outcome == "done" and m.accuracy >= CLEAR_ACCURACY
-    profile.record_lesson(step.key, m.net_wpm, m.accuracy, cleared)
+    profile.record_lesson(step.key, difficulty, m.net_wpm, m.accuracy, cleared)
     record(profile, session, "path")
     lesson_result(screen, session, step, ctx.outcome, cleared, hinted, rng)
 

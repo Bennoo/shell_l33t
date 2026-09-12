@@ -14,10 +14,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .engine import KeyStat, Metrics
+from .modes import DIFFICULTIES
 
 HISTORY_LIMIT = 200
 # Below this many attempts, an error rate is noise rather than a weakness.
 MIN_ATTEMPTS = 12
+DEFAULT_DIFFICULTY = "normal"
 
 
 def profile_path() -> Path:
@@ -56,12 +58,18 @@ class Profile:
     def __init__(self, keys: dict[str, KeyStat] | None = None,
                  runs: list[Run] | None = None,
                  tools: dict[str, KeyStat] | None = None,
-                 lessons: dict[str, LessonState] | None = None):
+                 lessons: dict[str, dict[str, LessonState]] | None = None,
+                 difficulty: str = DEFAULT_DIFFICULTY):
         self.keys: dict[str, KeyStat] = keys or {}
         self.runs: list[Run] = runs or []
         # Per-tool accuracy: attempts/errors counted in characters typed.
         self.tools: dict[str, KeyStat] = tools or {}
-        self.lessons: dict[str, LessonState] = lessons or {}
+        # lesson key -> difficulty -> state. Kept separate per difficulty
+        # because the time budget (and so the wpm needed to clear) scales
+        # with DIFFICULTIES, which makes an easy-mode best incomparable to
+        # a hard-mode one.
+        self.lessons: dict[str, dict[str, LessonState]] = lessons or {}
+        self.difficulty: str = difficulty if difficulty in DIFFICULTIES else DEFAULT_DIFFICULTY
 
     # -- persistence ------------------------------------------------------
 
@@ -99,19 +107,33 @@ class Profile:
             except (TypeError, ValueError):
                 continue
 
-        lessons = {}
+        lessons: dict[str, dict[str, LessonState]] = {}
         for name, d in (raw.get("lessons") or {}).items():
             if not isinstance(d, dict) or not isinstance(name, str):
                 continue
-            try:
-                lessons[name] = LessonState(
-                    bool(d.get("cleared", False)), int(d.get("attempts", 0)),
-                    float(d.get("best_wpm", 0.0)),
-                    float(d.get("best_accuracy", 0.0)))
-            except (TypeError, ValueError):
-                continue
+            # Pre-difficulty profiles stored one flat state per lesson;
+            # treat that as the "normal" bucket instead of losing it.
+            if "cleared" in d or "attempts" in d:
+                d = {DEFAULT_DIFFICULTY: d}
+            by_difficulty: dict[str, LessonState] = {}
+            for diff, sd in d.items():
+                if diff not in DIFFICULTIES or not isinstance(sd, dict):
+                    continue
+                try:
+                    by_difficulty[diff] = LessonState(
+                        bool(sd.get("cleared", False)), int(sd.get("attempts", 0)),
+                        float(sd.get("best_wpm", 0.0)),
+                        float(sd.get("best_accuracy", 0.0)))
+                except (TypeError, ValueError):
+                    continue
+            if by_difficulty:
+                lessons[name] = by_difficulty
 
-        return cls(keys, runs, tools, lessons)
+        difficulty = raw.get("difficulty")
+        if difficulty not in DIFFICULTIES:
+            difficulty = DEFAULT_DIFFICULTY
+
+        return cls(keys, runs, tools, lessons, difficulty)
 
     def save(self) -> None:
         data = {
@@ -126,10 +148,12 @@ class Profile:
                      for r in self.runs[-HISTORY_LIMIT:]],
             "tools": {n: {"attempts": s.attempts, "errors": s.errors}
                       for n, s in self.tools.items()},
-            "lessons": {n: {"cleared": s.cleared, "attempts": s.attempts,
-                            "best_wpm": round(s.best_wpm, 2),
-                            "best_accuracy": round(s.best_accuracy, 4)}
-                        for n, s in self.lessons.items()},
+            "lessons": {n: {diff: {"cleared": s.cleared, "attempts": s.attempts,
+                                   "best_wpm": round(s.best_wpm, 2),
+                                   "best_accuracy": round(s.best_accuracy, 4)}
+                            for diff, s in by_difficulty.items()}
+                        for n, by_difficulty in self.lessons.items()},
+            "difficulty": self.difficulty,
         }
         try:
             path = profile_path()
@@ -163,20 +187,32 @@ class Profile:
             stat.attempts += typed
             stat.errors += wrong
 
-    def record_lesson(self, key: str, wpm: float, accuracy: float,
-                      cleared: bool) -> None:
-        state = self.lessons.setdefault(key, LessonState())
+    def record_lesson(self, key: str, difficulty: str, wpm: float,
+                      accuracy: float, cleared: bool) -> None:
+        state = self.lessons.setdefault(key, {}).setdefault(
+            difficulty, LessonState())
         state.attempts += 1
         state.best_wpm = max(state.best_wpm, wpm)
         state.best_accuracy = max(state.best_accuracy, accuracy)
         # Clearing sticks: a bad run later doesn't un-teach the lesson.
         state.cleared = state.cleared or cleared
 
-    def lesson(self, key: str) -> LessonState:
-        return self.lessons.get(key, LessonState())
+    def lesson(self, key: str, difficulty: str) -> LessonState:
+        return self.lessons.get(key, {}).get(difficulty, LessonState())
 
-    def cleared_count(self) -> int:
-        return sum(1 for s in self.lessons.values() if s.cleared)
+    def cleared_count(self, difficulty: str | None = None) -> int:
+        """How many lessons are cleared.
+
+        With a difficulty given, only clears at that difficulty count --
+        matching what the path screen shows while browsing it. With none,
+        a lesson counts if it's been cleared at any difficulty, for the
+        difficulty-agnostic overview on the title screen.
+        """
+        if difficulty is None:
+            return sum(1 for by_difficulty in self.lessons.values()
+                       if any(s.cleared for s in by_difficulty.values()))
+        return sum(1 for by_difficulty in self.lessons.values()
+                   if by_difficulty.get(difficulty, LessonState()).cleared)
 
     # -- queries ----------------------------------------------------------
 

@@ -267,13 +267,16 @@ class Rain:
 
 
 def bar(screen: Screen, y: int, x: int, width: int, pct: float, attr: int,
-        label: str = "") -> None:
+        label: str = "", empty_attr: int | None = None) -> None:
     filled = max(0, min(width, round(width * pct)))
     g = screen.g
     screen.text(y, x, "[", curses.color_pair(P_GREY))
     screen.text(y, x + 1, g.full * filled, attr)
+    # P_DIM reads as a dark green, so it doubles as the default track colour
+    # -- but a bar whose fill colour carries meaning (like difficulty) needs
+    # an empty_attr that won't itself read as "still green" at 0%.
     screen.text(y, x + 1 + filled, g.empty * (width - filled),
-                curses.color_pair(P_DIM))
+                empty_attr if empty_attr is not None else curses.color_pair(P_DIM))
     screen.text(y, x + 1 + width, "]", curses.color_pair(P_GREY))
     if label:
         screen.text(y, x + width + 3, label, attr)

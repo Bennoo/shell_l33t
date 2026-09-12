@@ -261,31 +261,88 @@ def test_profile_round_trips(profile_home):
     s = make_run(errors_at=(2, 5))
     p.record("path", s.metrics(), s.key_stats())
     p.record_tools({"grep": (40, 3)})
-    p.record_lesson("find", 24.0, 0.95, True)
+    p.record_lesson("find", "normal", 24.0, 0.95, True)
     p.save()
 
     again = Profile.load()
     assert len(again.runs) == 1 and again.runs[0].mode == "path"
     assert again.best_wpm() == pytest.approx(p.runs[0].wpm, abs=0.01)
     assert again.tools["grep"].attempts == 40
-    assert again.lesson("find").cleared is True
+    assert again.lesson("find", "normal").cleared is True
     assert again.cleared_count() == 1
+    assert again.cleared_count("normal") == 1
+    assert again.cleared_count("hard") == 0
 
 
 def test_clearing_a_lesson_sticks(profile_home):
     """A bad run later must not un-teach a lesson you already cleared."""
     p = Profile.load()
-    p.record_lesson("files", 30.0, 0.96, True)
-    p.record_lesson("files", 12.0, 0.70, False)
-    state = p.lesson("files")
+    p.record_lesson("files", "normal", 30.0, 0.96, True)
+    p.record_lesson("files", "normal", 12.0, 0.70, False)
+    state = p.lesson("files", "normal")
     assert state.cleared is True
     assert state.attempts == 2
     assert state.best_wpm == 30.0
     assert state.best_accuracy == pytest.approx(0.96)
 
 
+def test_lesson_results_are_kept_separate_per_difficulty(profile_home):
+    """Easy and hard runs of the same lesson must not blend their bests --
+    the time budget (and so the wpm needed to clear) differs per difficulty."""
+    p = Profile.load()
+    p.record_lesson("files", "easy", 20.0, 0.95, True)
+    p.record_lesson("files", "hard", 40.0, 0.92, False)
+    assert p.lesson("files", "easy").best_wpm == 20.0
+    assert p.lesson("files", "easy").cleared is True
+    assert p.lesson("files", "hard").best_wpm == 40.0
+    assert p.lesson("files", "hard").cleared is False
+    assert p.lesson("files", "normal") == LessonState()
+    p.save()
+
+    again = Profile.load()
+    assert again.lesson("files", "easy").best_wpm == 20.0
+    assert again.lesson("files", "hard").best_wpm == 40.0
+    assert again.cleared_count("easy") == 1
+    assert again.cleared_count("hard") == 0
+    assert again.cleared_count() == 1     # cleared at any difficulty
+
+
 def test_unknown_lesson_is_safe(profile_home):
-    assert Profile.load().lesson("nope") == LessonState()
+    assert Profile.load().lesson("nope", "normal") == LessonState()
+
+
+def test_old_flat_lesson_state_migrates_to_normal(profile_home):
+    """Profiles saved before difficulty was tracked stored one flat state
+    per lesson; that history must land in the 'normal' bucket, not vanish."""
+    import json
+
+    path = profile_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "lessons": {"files": {"cleared": True, "attempts": 3,
+                              "best_wpm": 28.0, "best_accuracy": 0.94}},
+    }))
+    p = Profile.load()
+    assert p.lesson("files", "normal").cleared is True
+    assert p.lesson("files", "normal").best_wpm == 28.0
+    assert p.lesson("files", "easy") == LessonState()
+
+
+def test_difficulty_defaults_to_normal_and_round_trips(profile_home):
+    p = Profile.load()
+    assert p.difficulty == "normal"
+    p.difficulty = "hard"
+    p.save()
+    assert Profile.load().difficulty == "hard"
+
+
+def test_bogus_stored_difficulty_falls_back_to_normal(profile_home):
+    import json
+
+    path = profile_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"difficulty": "nightmare"}))
+    assert Profile.load().difficulty == "normal"
 
 
 def test_tool_stats_accumulate(profile_home):
@@ -310,7 +367,7 @@ def test_corrupt_profile_does_not_crash(profile_home):
 
 def test_unwritable_profile_is_survivable(profile_home, monkeypatch):
     p = Profile.load()
-    p.record_lesson("files", 20.0, 0.9, True)
+    p.record_lesson("files", "normal", 20.0, 0.9, True)
     monkeypatch.setattr("pathlib.Path.mkdir",
                         lambda *a, **k: (_ for _ in ()).throw(OSError("ro")))
     p.save()      # must not raise

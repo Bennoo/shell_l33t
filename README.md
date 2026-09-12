@@ -136,7 +136,11 @@ cost double), `NO BACKSPACE`, `SURGE` (the trace accelerates), `LOCKDOWN` (fix
 an error before you can continue). Clearing sticks — a bad run later doesn't
 un-teach a lesson.
 
-`--difficulty easy` gives the challenge 35% more time; `hard` gives 18% less.
+Difficulty is set on the learning path screen (left/right arrows) and sticks
+across sessions per lesson: `easy` gives the challenge 35% more time, `hard`
+gives 18% less. `--difficulty` seeds it from the command line on launch.
+Results are tracked separately per difficulty, since the wpm needed to clear
+a lesson isn't comparable across them.
 
 ## WATCH
 
