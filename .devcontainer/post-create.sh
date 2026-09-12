@@ -7,6 +7,12 @@ echo "==> Fixing cache volume ownership"
 sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache/uv" 2>/dev/null || true
 sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache/uv" /usr/local/uv 2>/dev/null || true
 
+echo "==> Trusting the workspace for git"
+# Docker Desktop's bind-mount layer can make the workspace look owned by a
+# different uid than git expects, even though it isn't -- git then refuses to
+# operate on it as "dubious ownership". Single-user container, so trust it all.
+git config --global --add safe.directory '*'
+
 if [ -f pyproject.toml ]; then
     echo "==> Syncing project dependencies"
     uv sync
