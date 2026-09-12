@@ -139,17 +139,20 @@ def menu(screen: Screen, options: list[tuple[str, str, str]], *,
 
         head = heading if heading is not None else screen.g.logo
         top = max(0, screen.h // 2 - (len(head) + len(options)) // 2 - 3)
-        width = max(max(len(h) for h in head) if head else 0, 46)
+        # Size the label column to the longest label, or a long one overflows
+        # into the hint column and gets clipped.
+        label_w = max(len(label) for _, label, _ in options) + 3
+        hint_w = max((len(hint) for *_, hint in options), default=0)
+        # The backdrop has to clear the widest thing on it -- heading, option
+        # row, or footnote -- or the rain shows through behind the text.
+        width = max(max(len(h) for h in head) if head else 0, 46,
+                    label_w + 2 + hint_w, len(footnote), len(aside))
         clear_box(screen, top - 1, top + len(head) + len(options) + 5, width + 10)
 
         for i, line in enumerate(head):
             screen.center(top + i, line, curses.color_pair(P_HI) | curses.A_BOLD)
 
         base = top + len(head) + 2
-        # Size the label column to the longest label, or a long one overflows
-        # into the hint column and gets clipped.
-        label_w = max(len(label) for _, label, _ in options) + 3
-        hint_w = max((len(hint) for *_, hint in options), default=0)
         x = max(0, (screen.w - (label_w + 2 + hint_w)) // 2)
         for i, (_, label, hint) in enumerate(options):
             selected = i == idx
@@ -406,6 +409,25 @@ def path_screen(screen: Screen, profile: Profile, rng: random.Random,
                       f"enter to start   q back   ·   difficulty: {difficulty}",
                       curses.color_pair(P_GREY))
         screen.present()
+
+
+def start_point(screen: Screen, step) -> str:
+    """Ask where in the lesson to begin.
+
+    Returns a key of modes.START_POINTS, or "quit" to back out. Every choice
+    still ends on the challenge -- you can skip teaching, never grading.
+    """
+    heading = [step.name.upper(), "", "where do you want to start?"]
+    options = [
+        ("full", "FULL LESSON", "problem -> breakdown -> type -> recall"),
+        ("recall", "FROM RECALL", "skip the walkthrough, prove you know it"),
+        ("challenge", "CHALLENGE ONLY", "straight to the timed run"),
+    ]
+    aside = (f"challenge modifier: {step.modifier.name}" if step.modifier
+             else "")
+    return menu(screen, options, heading=heading,
+                footnote="the challenge always runs -- it's what clears a step",
+                aside=aside)
 
 
 # Commands taught per run. Four learned properly beats six skimmed.
