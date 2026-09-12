@@ -25,6 +25,11 @@ class Part:
     text: str          # the fragment, exactly as it appears
     means: str         # what that fragment does
     glue: str = " "    # what separates it from the previous part
+    # True for a fragment whose exact text is an arbitrary value -- a path,
+    # filename, host, URL -- rather than something to learn. Recall shows
+    # these already: the point is remembering the command and its flags,
+    # not memorising a generated filename.
+    given: bool = False
 
 
 @dataclass(frozen=True)
@@ -94,7 +99,8 @@ LESSONS: tuple[Lesson, ...] = (
            "create a nested tree with brace expansion", "mkdir", [
             ("mkdir", "make directories"),
             ("-p", "create missing parents, and don't complain if it exists"),
-            ("build/{bin,lib,include}", "the shell expands this to three paths"),
+            ("build/{bin,lib,include}", "the shell expands this to three paths",
+             " ", True),
            ]),
         _C("cp -av config.yaml config.yaml.bak",
            "Before editing a config, you want a backup that is genuinely"
@@ -102,8 +108,8 @@ LESSONS: tuple[Lesson, ...] = (
            "copy preserving everything, and say what it did", "cp", [
             ("cp", "copy"),
             ("-av", "-a preserve mode/owner/timestamps, -v print each copy"),
-            ("config.yaml", "the source"),
-            ("config.yaml.bak", "the destination"),
+            ("config.yaml", "the source", " ", True),
+            ("config.yaml.bak", "the destination", " ", True),
            ]),
         _C("ln -sfn /opt/app/releases/v3 /opt/app/current",
            "A new release is unpacked. Switch 'current' to it without a gap"
@@ -111,8 +117,8 @@ LESSONS: tuple[Lesson, ...] = (
            "atomically repoint a symlink -- the classic deploy trick", "ln", [
             ("ln", "create a link"),
             ("-sfn", "-s symbolic, -f replace, -n don't follow the old link"),
-            ("/opt/app/releases/v3", "what it should point at"),
-            ("/opt/app/current", "the link itself"),
+            ("/opt/app/releases/v3", "what it should point at", " ", True),
+            ("/opt/app/current", "the link itself", " ", True),
            ]),
         _C("rm -i -- -weirdly-named-file",
            "A file's name begins with a dash, so every command thinks it's"
@@ -121,7 +127,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("rm", "remove"),
             ("-i", "ask before each deletion"),
             ("--", "everything after this is a filename, not an option"),
-            ("-weirdly-named-file", "now treated as a name"),
+            ("-weirdly-named-file", "now treated as a name", " ", True),
            ]),
     )),
 
@@ -134,7 +140,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("tail", "show the end of a file"),
             ("-f", "follow: keep printing as new lines arrive"),
             ("-n 100", "start with the last 100 lines"),
-            ("app.log", "the file to watch"),
+            ("app.log", "the file to watch", " ", True),
            ]),
         _C("head -n 20 /var/log/syslog",
            "A log is far too big to open. You just want to see how it"
@@ -142,7 +148,7 @@ LESSONS: tuple[Lesson, ...] = (
            "the first 20 lines", "head", [
             ("head", "show the beginning of a file"),
             ("-n 20", "how many lines to show from the top"),
-            ("/var/log/syslog", "the file"),
+            ("/var/log/syslog", "the file", " ", True),
            ]),
         _C("wc -l < access.log",
            "How many requests are in this log? You want the number alone,"
@@ -151,7 +157,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("wc", "count lines, words and bytes"),
             ("-l", "count lines only, not words or bytes"),
             ("<", "feed the file in on stdin, so wc never learns its name"),
-            ("access.log", "the file"),
+            ("access.log", "the file", " ", True),
            ]),
         _C("stat -c '%s %Y %n' *.tar.gz",
            "You want size and modification time for a set of files, in a"
@@ -160,7 +166,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("stat", "show file metadata"),
             ("-c", "use a custom output format"),
             ("'%s %Y %n'", "%s size, %Y mtime as a number, %n name"),
-            ("*.tar.gz", "every matching file"),
+            ("*.tar.gz", "every matching file", " ", True),
            ]),
         _C("diff -u old.conf new.conf",
            "Two versions of a config behave differently. What actually"
@@ -168,15 +174,15 @@ LESSONS: tuple[Lesson, ...] = (
            "unified diff -- the format patches are written in", "diff", [
             ("diff", "compare two files line by line"),
             ("-u", "unified format, with context lines around each change"),
-            ("old.conf", "the original"),
-            ("new.conf", "the new version"),
+            ("old.conf", "the original", " ", True),
+            ("new.conf", "the new version", " ", True),
            ]),
         _C("file -i unknown.bin",
            "Someone hands you a file with a meaningless name. What is it?",
            "identify a file by its contents, not its extension", "file", [
             ("file", "identify a file's type by inspecting its bytes"),
             ("-i", "report it as a MIME type and encoding"),
-            ("unknown.bin", "the mystery file"),
+            ("unknown.bin", "the mystery file", " ", True),
            ]),
     )),
 
@@ -187,7 +193,7 @@ LESSONS: tuple[Lesson, ...] = (
            " files you touched.",
            "python files modified in the last two days", "find", [
             ("find", "walk a directory tree"),
-            (".", "starting here"),
+            (".", "starting here", " ", True),
             ("-type f", "regular files only, not directories"),
             ("-name '*.py'", "quoted so find expands it, not the shell"),
             ("-newermt '-2 days'", "modified more recently than two days ago"),
@@ -200,7 +206,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("-rn", "-r recurse into directories, -n show line numbers"),
             ("--include='*.go'", "only look inside matching filenames"),
             ("'TODO'", "the pattern"),
-            (".", "where to search"),
+            (".", "where to search", " ", True),
            ]),
         _C("find . -name '*.tmp' -print0 | xargs -0 rm -f",
            "You need to delete hundreds of scattered temp files -- and some"
@@ -218,7 +224,7 @@ LESSONS: tuple[Lesson, ...] = (
            "strip comments, then strip the blank lines left behind", "grep", [
             ("grep -v", "-v inverts the match: print lines that DON'T match"),
             ("'^#'", "^ anchors to line start, so: lines beginning with #"),
-            ("/etc/ssh/sshd_config", "the file"),
+            ("/etc/ssh/sshd_config", "the file", " ", True),
             ("|", "pass what survived onward"),
             ("grep .", "'.' is any character, so this drops empty lines"),
            ]),
@@ -229,7 +235,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("grep", "search"),
             ("-c", "print a count of matching lines"),
             ("ERROR", "the pattern"),
-            ("app.log", "the file"),
+            ("app.log", "the file", " ", True),
            ]),
         _C("find /var -size +100M -exec ls -lh {} +",
            "Something under /var is huge. Find the offenders and show their"
@@ -262,7 +268,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("-F:", "split each line on colons"),
             ("'$3 >= 1000", "a condition on the third field, the uid"),
             ("{print $1}'", "the action: print the first field, the name"),
-            ("/etc/passwd", "the file"),
+            ("/etc/passwd", "the file", " ", True),
            ]),
         _C("sed -i.bak 's/localhost/0.0.0.0/g' config.yaml",
            "One value needs replacing throughout a config, and you want a"
@@ -271,7 +277,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("sed", "stream editor"),
             ("-i.bak", "edit the file in place, saving the original as .bak"),
             ("'s/localhost/0.0.0.0/g'", "substitute, /g for every occurrence"),
-            ("config.yaml", "the file"),
+            ("config.yaml", "the file", " ", True),
            ]),
         _C("cut -d, -f1,3 data.csv",
            "A CSV has twenty columns and you need two of them.",
@@ -279,7 +285,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("cut", "select parts of each line"),
             ("-d,", "the delimiter is a comma"),
             ("-f1,3", "keep fields 1 and 3"),
-            ("data.csv", "the file"),
+            ("data.csv", "the file", " ", True),
            ]),
         _C("awk '{sum += $2} END {print sum}' sizes.txt",
            "You need the total of a column of numbers.",
@@ -287,7 +293,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("awk", "process line by line"),
             ("'{sum += $2}", "runs for every line: add the 2nd field"),
             ("END {print sum}'", "runs once, after the last line"),
-            ("sizes.txt", "the file"),
+            ("sizes.txt", "the file", " ", True),
            ]),
         _C("jq -r '.items[] | .id' data.json",
            "An API returned JSON and you want one field from every item, as"
@@ -297,7 +303,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("-r", "raw output: no surrounding quotes"),
             ("'.items[]", "iterate over every element of the items array"),
             ("| .id'", "jq has its own pipe, inside the quotes"),
-            ("data.json", "the file"),
+            ("data.json", "the file", " ", True),
            ]),
     )),
 
@@ -316,7 +322,7 @@ LESSONS: tuple[Lesson, ...] = (
            "You want a script's normal output and its errors in separate"
            " files.",
            "stdout and stderr to different destinations", "redirection", [
-            ("./run.sh", "the command"),
+            ("./run.sh", "the command", " ", True),
             ("> out.txt", "redirect stdout; > truncates, >> would append"),
             ("2> err.txt", "redirect stderr, which is file descriptor 2"),
            ]),
@@ -345,7 +351,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("grep", "search"),
             ("-m5", "stop reading after 5 matches"),
             ("FATAL", "the pattern"),
-            ("huge.log", "the file"),
+            ("huge.log", "the file", " ", True),
            ]),
         _C("printf '%s\\n' one two three | nl",
            "You want a list of values turned into numbered lines.",
@@ -364,7 +370,7 @@ LESSONS: tuple[Lesson, ...] = (
            "a private key must be readable only by you", "chmod", [
             ("chmod", "change permission bits"),
             ("600", "owner read+write, group none, others none"),
-            ("~/.ssh/id_ed25519", "the private key"),
+            ("~/.ssh/id_ed25519", "the private key", " ", True),
            ]),
         _C("chmod u+x,go-w deploy.sh",
            "Make a script runnable by you, while making sure nobody else can"
@@ -372,7 +378,7 @@ LESSONS: tuple[Lesson, ...] = (
            "symbolic modes change bits without restating them all", "chmod", [
             ("chmod", "change permissions"),
             ("u+x,go-w", "u=user g=group o=others; + adds, - removes"),
-            ("deploy.sh", "the script"),
+            ("deploy.sh", "the script", " ", True),
            ]),
         _C("chown -R deploy:deploy /srv/www",
            "A directory tree was unpacked as root and the service account"
@@ -381,7 +387,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("chown", "change ownership"),
             ("-R", "recurse into the whole tree"),
             ("deploy:deploy", "user:group"),
-            ("/srv/www", "the tree"),
+            ("/srv/www", "the tree", " ", True),
            ]),
         _C("find . -type f -perm /o+w -ls",
            "Audit a project for files anyone on the system could modify.",
@@ -431,7 +437,7 @@ LESSONS: tuple[Lesson, ...] = (
            " laptop.",
            "detach from the terminal and keep the output", "nohup", [
             ("nohup", "ignore the hangup signal sent when the terminal closes"),
-            ("./worker.sh", "the job"),
+            ("./worker.sh", "the job", " ", True),
             ("> worker.log", "capture its output, since you won't be watching"),
             ("2>&1", "errors too"),
             ("&", "run it in the background and give the prompt back"),
@@ -448,7 +454,7 @@ LESSONS: tuple[Lesson, ...] = (
            "kill it if it hasn't finished in time", "timeout", [
             ("timeout", "run a command with a time limit"),
             ("30s", "the limit"),
-            ("./flaky-check.sh", "the command"),
+            ("./flaky-check.sh", "the command", " ", True),
            ]),
         _C("journalctl -u nginx --since '1 hour ago' -f",
            "A service just started failing. What has it been saying?",
@@ -470,7 +476,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("-sS", "-s silence the progress meter, -S but still show errors"),
             ("-o /dev/null", "discard the response body"),
             ("-w '%{http_code}\\n'", "after the transfer, print just this"),
-            ("https://x.io", "the URL"),
+            ("https://x.io", "the URL", " ", True),
            ]),
         _C("ssh -i ~/.ssh/id_ed25519 -p 2222 deploy@10.0.42.7",
            "Connect to a host that uses a non-standard port and a key that"
@@ -479,7 +485,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("ssh", "secure shell"),
             ("-i ~/.ssh/id_ed25519", "which private key to offer"),
             ("-p 2222", "which port -- lowercase p on ssh"),
-            ("deploy@10.0.42.7", "user@host"),
+            ("deploy@10.0.42.7", "user@host", " ", True),
            ]),
         _C("ssh -L 5432:localhost:5432 bastion",
            "A database is only reachable from a jump host. You want to query"
@@ -488,7 +494,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("ssh", "secure shell"),
             ("-L", "local forward: open a port here, tunnel it there"),
             ("5432:localhost:5432", "myport:host-as-seen-by-bastion:itsport"),
-            ("bastion", "the host you can actually reach"),
+            ("bastion", "the host you can actually reach", " ", True),
            ]),
         _C("ss -tulpn | grep LISTEN",
            "Something is bound to a port and you don't know what.",
@@ -504,7 +510,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("dig", "DNS lookup tool"),
             ("+short", "print only the answer"),
             ("AAAA", "the IPv6 record type; A would be IPv4"),
-            ("example.com", "the name to look up"),
+            ("example.com", "the name to look up", " ", True),
            ]),
         _C("nc -zv db.internal 5432",
            "Before blaming the database, check whether you can even reach its"
@@ -512,7 +518,7 @@ LESSONS: tuple[Lesson, ...] = (
            "test a port without sending any data", "nc", [
             ("nc", "netcat: raw TCP/UDP connections"),
             ("-zv", "-z just scan, send nothing; -v say what happened"),
-            ("db.internal", "the host"),
+            ("db.internal", "the host", " ", True),
             ("5432", "the port"),
            ]),
     )),
@@ -525,14 +531,14 @@ LESSONS: tuple[Lesson, ...] = (
            "create a branch and move to it", "git", [
             ("git switch", "change branches -- the modern, clearer checkout"),
             ("-c", "create the branch first"),
-            ("feature/typing-modes", "the new branch name"),
+            ("feature/typing-modes", "the new branch name", " ", True),
            ]),
         _C("git add -p src/engine.py",
            "You fixed a bug and left some debug prints. Commit only the fix.",
            "stage selected hunks, not whole files", "git", [
             ("git add", "stage changes for the next commit"),
             ("-p", "patch mode: walk each hunk and choose y/n"),
-            ("src/engine.py", "limit it to this file"),
+            ("src/engine.py", "limit it to this file", " ", True),
            ]),
         _C("git commit --amend --no-edit",
            "You committed, then immediately spotted a typo. You don't want a"
@@ -577,7 +583,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("tar", "create and extract archives"),
             ("-czf", "c create, z gzip it, f the filename follows"),
             ("backup-$(date +%F).tar.gz", "$(...) inserts 2026-09-11"),
-            ("/var/lib/node", "what to archive"),
+            ("/var/lib/node", "what to archive", " ", True),
            ]),
         _C("tar -xzf release.tar.gz -C /opt/app --strip-components=1",
            "A release tarball wraps everything in a top-level folder you"
@@ -585,7 +591,7 @@ LESSONS: tuple[Lesson, ...] = (
            "extract elsewhere, dropping the wrapper directory", "tar", [
             ("tar", "archive tool"),
             ("-xzf", "x extract, z gunzip, f from this file"),
-            ("release.tar.gz", "the archive"),
+            ("release.tar.gz", "the archive", " ", True),
             ("-C /opt/app", "change to this directory before extracting"),
             ("--strip-components=1", "discard the first path component"),
            ]),
@@ -598,7 +604,7 @@ LESSONS: tuple[Lesson, ...] = (
             ("--delete", "remove remote files that no longer exist locally"),
             ("--dry-run", "change nothing; just report what would happen"),
             ("./dist/", "the trailing slash means 'contents of', not the folder"),
-            ("edge:/srv/www/", "host:path destination"),
+            ("edge:/srv/www/", "host:path destination", " ", True),
            ]),
         _C("rsync -avzP --partial big.iso backup:/data/",
            "A huge transfer keeps dying halfway over a bad connection.",
@@ -606,15 +612,15 @@ LESSONS: tuple[Lesson, ...] = (
             ("rsync", "file sync"),
             ("-avzP", "P = --partial plus --progress"),
             ("--partial", "keep what transferred so a rerun resumes"),
-            ("big.iso", "the file"),
-            ("backup:/data/", "the destination"),
+            ("big.iso", "the file", " ", True),
+            ("backup:/data/", "the destination", " ", True),
            ]),
         _C("zcat access.log.gz | grep -c 500",
            "Count errors in a rotated log without unpacking a gigabyte to"
            " disk.",
            "read a compressed file as a stream", "zcat", [
             ("zcat", "decompress to stdout, leaving the file alone"),
-            ("access.log.gz", "the compressed log"),
+            ("access.log.gz", "the compressed log", " ", True),
             ("| grep -c 500", "count matching lines in the stream"),
            ]),
         _C("split -b 100M big.bin part-",
@@ -622,8 +628,8 @@ LESSONS: tuple[Lesson, ...] = (
            "chop a file into fixed-size pieces", "split", [
             ("split", "break a file into pieces"),
             ("-b 100M", "100 megabytes each"),
-            ("big.bin", "the source"),
-            ("part-", "prefix, giving part-aa, part-ab, ..."),
+            ("big.bin", "the source", " ", True),
+            ("part-", "prefix, giving part-aa, part-ab, ...", " ", True),
            ]),
     )),
 
@@ -798,6 +804,17 @@ def symbol_drill(rng: random.Random, weak: list[str], width: int = 44) -> str:
         groups.append(group)
         length += len(group) + 1
     return " ".join(groups) if groups else rng.choice(SYMBOLS) * 3
+
+
+def given_spans(command: Command) -> list[tuple[int, int]]:
+    """Character ranges of parts already given away during recall.
+
+    These are the arbitrary values (paths, filenames, hosts...) a lesson
+    generates rather than teaches -- shown up front so recall tests whether
+    you remember the command, not whether you memorised a filename.
+    """
+    return [span for part, span in zip(command.parts, part_spans(command))
+            if part.given]
 
 
 def part_spans(command: Command) -> list[tuple[int, int]]:

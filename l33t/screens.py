@@ -483,7 +483,8 @@ def play_lesson(screen: Screen, profile: Profile, step, rng: random.Random,
         if phase_card(screen, "RECALL",
                       "Now without the answer in front of you.",
                       ["You'll see only the problem. Type the command that solves",
-                       "it. Characters appear as you get them right.",
+                       "it. Paths and filenames are shown already -- it's the",
+                       "command and flags recall is testing, not a generated name.",
                        "",
                        "Still no clock -- take as long as you need.",
                        "TAB reveals the command, ctrl-N skips it."]) == "abort":
@@ -550,8 +551,10 @@ def type_single(screen: Screen, cmd, *, title: str, phase: str,
     """One command, untimed, no speed readout. Strict: you cannot move past a
     character until it's right, because the point is to learn it correctly."""
     session = TypingSession([cmd.text], strict=True)
+    given = tuple(shell.given_spans(cmd)) if masked else ()
     ctx = RunContext(mode="learn", title=title, phase=phase, calm=True,
-                     masked=masked, notes=() if masked else (cmd.explain,),
+                     masked=masked, given=given,
+                     notes=() if masked else (cmd.explain,),
                      subtitle=subtitle, skippable=True)
     return session, run_typing(screen, session, ctx)
 

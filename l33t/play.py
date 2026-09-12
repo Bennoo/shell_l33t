@@ -51,6 +51,10 @@ class RunContext:
     masked: bool = False
     revealed: set = field(default_factory=set)
     hints: int = 0
+    # Character ranges (into the single masked line) that stay visible even
+    # while masked -- the arbitrary paths/filenames/hosts a lesson generates,
+    # as opposed to the command and flags recall is actually testing.
+    given: tuple = ()
     # Learning phases run calm: no clock, no speed readout, nothing counting
     # down while you're still working out what a command means. Pressure is
     # for the challenge at the end, once you already understand it.
@@ -196,7 +200,7 @@ def draw_run(screen: Screen, session: TypingSession, ctx: RunContext) -> None:
                        cursor=session.pos if active else None,
                        active=active, blind=ctx.blind,
                        mask=ctx.masked and i not in ctx.revealed,
-                       hidden=screen.g.hidden)
+                       given=ctx.given, hidden=screen.g.hidden)
 
     y = top + (last - first) * 2
     if ctx.notes:
@@ -209,10 +213,14 @@ def draw_run(screen: Screen, session: TypingSession, ctx: RunContext) -> None:
     draw_footer(screen, session, ctx, y)
 
 
+def _in_spans(i: int, spans: tuple) -> bool:
+    return any(start <= i < end for start, end in spans)
+
+
 def draw_text_line(screen: Screen, y: int, x: int, target: str,
                    typed: list[str], ok: list[bool], cursor: int | None,
                    active: bool, blind: bool, mask: bool = False,
-                   hidden: str = "·") -> None:
+                   given: tuple = (), hidden: str = "·") -> None:
     """One target line, coloured per character.
 
     A mistyped character shows the character you *should* have hit, on red --
@@ -228,6 +236,10 @@ def draw_text_line(screen: Screen, y: int, x: int, target: str,
                         else curses.color_pair(P_GREEN))
             else:
                 attr = curses.color_pair(P_ALERT) | curses.A_BOLD
+        elif mask and _in_spans(i, given):
+            # Given away: an arbitrary path/filename, not something recall
+            # is testing -- dimmed to read as "shown", not "remember this".
+            attr = curses.color_pair(P_CYAN)
         elif active:
             attr = curses.color_pair(P_WHITE)
         else:
@@ -237,12 +249,14 @@ def draw_text_line(screen: Screen, y: int, x: int, target: str,
     if cursor is not None and cursor < len(target):
         attrs[cursor] = curses.color_pair(P_SEL) | curses.A_BOLD
 
-    # In recall mode, characters you haven't reached yet are placeholders:
-    # you can see the shape of the answer, not the answer.
+    # In recall mode, characters you haven't reached yet are placeholders --
+    # unless they belong to a "given" span (a path/filename the lesson
+    # generated), which stays visible: you can see the shape of the answer,
+    # not the answer, except for the parts nobody's expected to memorise.
     shown = list(target)
     if mask:
         for i in range(len(target)):
-            if i >= len(typed):
+            if i >= len(typed) and not _in_spans(i, given):
                 shown[i] = " " if target[i] == " " else hidden
 
     i = 0

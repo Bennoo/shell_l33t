@@ -82,8 +82,11 @@ until it's right — the point is to learn it correctly.
 
 **4. Recall.** The part that proves you learned it. You get the *problem
 only*; the command is hidden behind `·· ··· ···········` and appears as you
-type it from memory. Still no clock. `TAB` reveals it if you're stuck, and the
-result screen tells you how often you needed that.
+type it from memory. Paths, filenames and hosts stay visible throughout --
+they're generated per run, so recall is testing whether you remember the
+command and its flags, not whether you memorised `config.yaml`. Still no
+clock. `TAB` reveals it if you're stuck, and the result screen tells you how
+often you needed that.
 
 **5. Challenge.** Now speed. The same four commands, back to back, against the
 trace. Clear the lesson at the target speed with 90% accuracy.
