@@ -1129,10 +1129,10 @@ def sparkline(screen: Screen, values: list[float]) -> str:
 # --------------------------------------------------------------------------
 
 # A skilled typist, not a machine: fast, but with rhythm.
-WATCH_CPS = (17.0, 26.0)        # characters per second, per command
-THINK_BEFORE = (0.35, 1.3)      # pause before starting to type
-RUN_DELAY = (0.12, 0.5)         # command submitted -> output appears
-OUTPUT_LINE = 0.035             # output streams in rather than snapping on
+WATCH_CPS = (14.0, 22.0)        # characters per second, per command
+THINK_BEFORE = (0.45, 1.5)      # pause before starting to type
+RUN_DELAY = (0.18, 0.65)        # command submitted -> output appears
+OUTPUT_LINE = 0.045             # output streams in rather than snapping on
 TYPO_CHANCE = 0.05              # even experts fumble, and fix it instantly
 # How long the finished scene stays on screen before it's cleared. The last
 # command lands, its output arrives, and then you need time to actually read

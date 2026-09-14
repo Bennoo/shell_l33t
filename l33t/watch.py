@@ -25,7 +25,7 @@ class Beat:
     prompt: str
     command: str
     output: tuple[str, ...] = ()
-    pause: float = 0.7          # beat before the next command is typed
+    pause: float = 0.85         # beat before the next command is typed
     failed: bool = False
     comment: str = ""           # shown dim above the command, as intent
     mutter: tuple[str, str] = ()  # (japanese, english) note after the output
@@ -65,8 +65,17 @@ CLOSING = [
     ("完了", "done"),
     ("よし", "right then"),
 ]
+# Asked of herself partway through, before she's actually found anything --
+# the hypothesis she's chasing with the next command.
+QUESTIONS = [
+    ("なぜだ", "why though"),
+    ("怪しいな", "that's suspicious"),
+    ("原因は", "what's the cause"),
+    ("さてと", "let's see"),
+    ("次は何だ", "what's next"),
+]
 
-MUTTERINGS = DISCOVERY + SURPRISE + CLOSING
+MUTTERINGS = DISCOVERY + SURPRISE + CLOSING + QUESTIONS
 PROJECTS = ["atlas", "helios", "orbit", "vertex", "lumen", "quarry", "pylon"]
 SERVICES = ["nginx", "postgres", "redis", "api-gateway", "worker", "ingest"]
 BRANCHES = ["main", "develop", "feature/cache-layer", "fix/timeout-retry",
@@ -374,19 +383,139 @@ def scene_text_crunch(ctx: Context) -> list[Beat]:
     ]
 
 
+def scene_backup_check(ctx: Context) -> list[Beat]:
+    rng = ctx.rng
+    p = ctx.at(f"/var/backups/{ctx.project}")
+    host = rng.choice(HOSTS)
+    fname = f"{ctx.project}-{_date(rng)}.tar.gz"
+    size = _size(rng, unit=rng.choice(["M", "G"]))
+    return [
+        Beat(p, "ls -lh | tail -3",
+             (f"-rw-r--r-- 1 {ctx.user} {ctx.user} {_size(rng,unit='M')} "
+              f"{_date(rng)} {ctx.project}-{_date(rng)}.tar.gz",
+              f"-rw-r--r-- 1 {ctx.user} {ctx.user} {_size(rng,unit='M')} "
+              f"{_date(rng)} {ctx.project}-{_date(rng)}.tar.gz",
+              f"-rw-r--r-- 1 {ctx.user} {ctx.user} {size} {_date(rng)} {fname}"),
+             comment="nightly backup landed -- make sure it isn't empty air"),
+        Beat(p, f"tar -tzf {fname} | wc -l", (str(rng.randint(400, 50000)),)),
+        Beat(p, f"tar -tzf {fname} | head -3",
+             (f"{ctx.project}/config/settings.yml",
+              f"{ctx.project}/db/schema.sql",
+              f"{ctx.project}/db/dump.sql"), pause=1.0),
+        Beat(p, f"scp {fname} {host}:/mnt/offsite/",
+             (f"{fname}   100%  {size}  {rng.uniform(2,40):.1f}MB/s   "
+              f"00:0{rng.randint(1,9)}",)),
+        Beat(p, f"ssh {host} 'ls -la /mnt/offsite/{fname}'",
+             (f"-rw-r--r-- 1 root root {size} {_date(rng)} {fname}",),
+             pause=1.4),
+    ]
+
+
+def scene_stuck_job(ctx: Context) -> list[Beat]:
+    rng = ctx.rng
+    job = rng.choice(["nightly-export", "report-builder", "index-rebuild",
+                       "cache-warm"])
+    pid = _pid(rng)
+    hours = rng.randint(3, 14)
+    p = ctx.at(f"~/{ctx.project}")
+    return [
+        Beat(p, f"pgrep -fa {job}",
+             (f"{pid} python3 scripts/{job}.py --full",),
+             comment=f"{job} should be minutes, not sitting like this"),
+        Beat(p, f"ps -p {pid} -o pid,etime,stat --no-headers",
+             (f"{pid}   {hours:02d}:{rng.randint(10,59):02d}:00 D",)),
+        Beat(p, f"cat /proc/{pid}/wchan", ("pipe_wait",)),
+        Beat(p, f"lsof -p {pid} | grep -i pipe | head -2",
+             (f"python3 {pid} {ctx.user:<5} 10w  FIFO  0,13   0t0  pipe",
+              f"python3 {pid} {ctx.user:<5} 11r  FIFO  0,13   0t0  pipe"),
+             pause=1.0),
+        Beat(p, f"kill -9 {pid}", ()),
+        Beat(p, f"pgrep -fa {job}", (), failed=True, pause=0.9),
+        Beat(p, f"nohup timeout 30m python3 scripts/{job}.py "
+                "&>/tmp/job.log &",
+             (f"[1] {_pid(rng)}",), pause=1.4),
+    ]
+
+
+def scene_api_probe(ctx: Context) -> list[Beat]:
+    rng = ctx.rng
+    svc = rng.choice(["orders", "billing", "search", "accounts"])
+    p = ctx.at("~")
+    latency = rng.randint(180, 950)
+    err_count = rng.randint(3, 40)
+    return [
+        Beat(p, f"curl -s {ctx.project}.io/{svc}/health | jq .",
+             ("{", '  "status": "degraded",',
+              f'  "latency_ms": {latency}', "}"),
+             comment=f"{svc} dashboard is flashing amber -- see for herself"),
+        Beat(p, f"journalctl -u {svc}-api --since '10 min ago' "
+                "| grep -c ERROR", (str(err_count),), pause=1.0),
+        Beat(p, f"journalctl -u {svc}-api --since '10 min ago' "
+                "| grep ERROR | tail -2",
+             (f"{_clock(rng)} {ctx.host} {svc}-api: pool timeout at 5000ms",
+              f"{_clock(rng)} {ctx.host} {svc}-api: connection reset by peer")),
+        Beat(p, f"ssh {ctx.host} 'systemctl restart {svc}-api'", (), pause=1.2),
+        Beat(p, f"curl -s {ctx.project}.io/{svc}/health | jq -r .status",
+             ("ok",), pause=1.5),
+    ]
+
+
+_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def _cert_date(rng):
+    return (f"{rng.choice(_MONTHS)} {rng.randint(1,28)} "
+            f"{rng.randint(0,23):02d}:{rng.randint(0,59):02d}:00 2026 GMT")
+
+
+def scene_cert_watch(ctx: Context) -> list[Beat]:
+    rng = ctx.rng
+    host = f"{ctx.project}.io"
+    p = ctx.at("~")
+    days = rng.randint(2, 9)
+    return [
+        Beat(p, f"openssl s_client -connect {host}:443 > /tmp/cert.pem",
+             (), comment="renewal alerts have gone quiet -- check herself"),
+        Beat(p, "openssl x509 -in /tmp/cert.pem -noout -enddate",
+             (f"notAfter={_cert_date(rng)}",)),
+        Beat(p, f"grep -c {host} /var/log/certbot-renew.log", ("0",)),
+        Beat(p, "systemctl status certbot-renew.timer",
+             ("certbot-renew.timer - dead",
+              "   Active: inactive (dead)",
+              "  Trigger: n/a"), pause=1.0),
+        Beat(p, "systemctl enable --now certbot-renew.timer", ()),
+        Beat(p, "systemctl list-timers certbot-renew.timer --no-pager",
+             ("NEXT                 LEFT     UNIT",
+              f"tomorrow 03:00:00    {days}h left  certbot-renew.timer")),
+        Beat(p, "journalctl -u certbot-renew --since '2 min ago' "
+                "| tail -n 2",
+             (f"{_clock(rng)} {ctx.host} certbot: renewing {host}",
+              f"{_clock(rng)} {ctx.host} certbot: certificate renewed"),
+             pause=1.5),
+    ]
+
+
 SCENES = (scene_disk_full, scene_service_down, scene_deploy,
           scene_log_forensics, scene_permissions, scene_port_hunt,
-          scene_git_tidy, scene_net_probe, scene_text_crunch)
+          scene_git_tidy, scene_net_probe, scene_text_crunch,
+          scene_backup_check, scene_stuck_job, scene_api_probe,
+          scene_cert_watch)
 
 
 def _with_mutterings(beats: list[Beat], rng: random.Random) -> list[Beat]:
-    """Drop one or two of her notes onto beats inside the scene.
+    """Drop two or three of her notes onto beats inside the scene.
 
     Placement is contextual, not random: a reaction only lands on a beat that
     actually printed something for her to react to, a failure gets a
     failure-shaped reaction, and the closing note goes on the last beat where
     the problem is resolved. A mismatched mutter ("that's odd" after a clean
     delete) breaks the illusion faster than having none at all.
+
+    Where there's room for it, an earlier beat also gets a question -- the
+    hypothesis she's chasing before the reaction beat answers it. That's what
+    makes her read as thinking it through rather than just narrating what
+    already happened.
     """
     beats = [b for b in beats if b.command]
     if len(beats) < 3:
@@ -398,6 +527,11 @@ def _with_mutterings(beats: list[Beat], rng: random.Random) -> list[Beat]:
         i = rng.choice(candidates)
         pool = SURPRISE if out[i].failed else DISCOVERY
         out[i] = replace(out[i], mutter=rng.choice(pool))
+
+        earlier = [j for j in candidates if j < i and not out[j].failed]
+        if earlier:
+            q = rng.choice(earlier)
+            out[q] = replace(out[q], mutter=rng.choice(QUESTIONS))
 
     out[-1] = replace(out[-1], mutter=rng.choice(CLOSING))
     return out
